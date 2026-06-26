@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraCard — Quantum GLSL Engine</title>
+    <style>
+        :root {
+            --bg-main: #0a0a0c;
+            --bg-panel: rgba(18, 18, 22, 0.95);
+            --accent: #5d56ff;
+            --text-main: #f1f1f4;
+            --text-muted: #8a8a93;
+            --border: rgba(255, 255, 255, 0.08);
+            --font-ui: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        
+        body { 
+            background-color: var(--bg-main); 
+            color: var(--text-main); 
+            font-family: var(--font-ui); 
+            overflow: hidden; 
+            display: flex; 
+            flex-direction: row;
+            height: 100vh; 
+        }
+
+        .panel { 
+            width: 380px; 
+            min-width: 380px;
+            background: var(--bg-panel); 
+            backdrop-filter: blur(20px); 
+            border-right: 1px solid var(--border); 
+            padding: 2rem; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 1.5rem; 
+            z-index: 10; 
+            overflow-y: auto; 
+            height: 100vh;
+        }
+
+        .logo { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.03em; text-transform: uppercase; background: linear-gradient(45deg, #fff, var(--text-muted)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 0.5rem; }
+        .group { display: flex; flex-direction: column; }
+        
+        select, input[type="text"], input[type="range"] { width: 100%; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); padding: 0.75rem 1rem; border-radius: 8px; color: var(--text-main); font-size: 0.9rem; transition: all 0.3s ease; }
+        select:focus, input[type="text"]:focus { outline: none; border-color: var(--accent); background: rgba(255, 255, 255, 0.06); }
+        select option { color: #000000 !important; background-color: #ffffff !important; }
+        input[type="range"] { padding: 0.5rem; cursor: pointer; accent-color: var(--accent); }
+        .checkbox-label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem; cursor: pointer; }
+
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin-top: 0.5rem; }
+        .color-dot { height: 30px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: border-color 0.2s; }
+        .color-dot.active { border-color: #fff; }
+
+        .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; max-height: 110px; overflow-y: auto; margin-top: 0.5rem; }
+        .thumb-box { width: 100%; height: 50px; border-radius: 4px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-size: 0.55rem; color: var(--text-muted); overflow: hidden; }
+        .thumb { width: 100%; height: 100%; object-fit: cover; cursor: pointer; opacity: 0.6; transition: all 0.3s ease; }
+        .thumb:hover { opacity: 0.9; }
+        .thumb.active { opacity: 1; border: 2px solid var(--accent); }
+
+        .workspace { 
+            flex: 1; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            position: relative; 
+            background: radial-gradient(circle at center, #141419 0%, #0a0a0c 100%); 
+            padding: 1rem; 
+            overflow: hidden;
+        }
+        
+        .card-container { 
+            width: 500px; 
+            height: 650px; 
+            max-width: 100%;
+            max-height: 90vh;
+            background: #111; 
+            border-radius: 16px; 
+            position: relative; 
+            overflow: hidden; 
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5); 
+            aspect-ratio: 500 / 650;
+        }
+        
+        #webglCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+        .layer { position: absolute; padding: 10px; cursor: move; min-width: 100px; min-height: 50px; display: flex; align-items: center; box-sizing: border-box; z-index: 2; }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column-reverse; }
+            .panel { 
+                width: 100%; 
+                min-width: 100%; 
+                height: 45vh; 
+                border-right: none; 
+                border-top: 1px solid var(--border); 
+                position: absolute;
+                bottom: 0;
+                left: 0;
+            }
+            .workspace {
+                height: 55vh;
+                padding: 1rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+            }
+            .card-container {
+                width: auto;
+                height: 100%;
+                max-width: 100%;
+                max-height: 100%;
+                aspect-ratio: 500 / 650;
+                border-radius: 12px;
+            }
+        }
+        .layer:hover, .layer.active { outline: 1px dashed var(--accent); }
+        .layer-title { font-size: 2.5rem; font-weight: 800; color: #ffffff; line-height: 1.1; text-shadow: 0 4px 12px rgba(0,0,0,0.6); width: 100%; word-break: break-word; }
+        .layer-text { font-size: 1.1rem; color: rgba(255,255,255,0.85); line-height: 1.5; text-shadow: 0 2px 8px rgba(0,0,0,0.7); width: 100%; word-break: break-word; }
+        
+        .resizer { width: 10px; height: 10px; background: var(--accent); position: absolute; right: 0; bottom: 0; cursor: se-resize; display: none; }
+        .layer:hover .resizer, .layer.active .resizer { display: block; }
+        
+        .btn { background: var(--text-main); color: var(--bg-main); border: none; padding: 1rem; border-radius: 8px; font-weight: 600; cursor: pointer; transition: transform 0.2s, opacity 0.2s; margin-top: 0.5rem; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text-main); margin-top: 0.25rem; }
+    </style>
+</head>
+<body>
+
+    <div class="panel">
+        <div class="logo">AuraCard</div>
+        
+        <div class="group">
+            <div class="section-title">1. Occasion</div>
+            <select id="eventSelect"></select>
+            <input type="text" id="customSearch" placeholder="Type prompt & hit Enter...">
+        </div>
+
+        <div class="group">
+            <div class="section-title">2. Quantum GLSL Generator</div>
+            <div class="gallery" id="bgGallery"></div>
+            <label class="checkbox-label" style="margin-top: 0.75rem;">Fractal Distortion</label>
+            <input type="range" id="fractalRange" min="1" max="100" value="50">
+        </div>
+
+        <div class="group">
+            <div class="section-title">3. Typography & Palette</div>
+            <select id="fontSelect"></select>
+            <div class="palette-grid" id="paletteGrid"></div>
+        </div>
+
+        <div class="group">
+            <div class="section-title">4. Content Engine</div>
+            <input type="text" id="inputTitle" placeholder="Card Headline">
+            <input type="text" id="inputText" placeholder="Body Message" style="margin-top: 0.5rem;">
+        </div>
+
+        <div class="group">
+            <div class="section-title">5. Layout Settings</div>
+            <label class="checkbox-label"><input type="checkbox" id="aspectRatio" checked> Lock Aspect Ratio</label>
+            <label class="checkbox-label"><input type="checkbox" id="animateEffects" checked> Cinematic Motion</label>
+        </div>
+
+        <button class="btn" id="exportBtn">Export Static PNG</button>
+        <button class="btn btn-secondary" id="exportMotionBtn">Export Animated SVG</button>
+		<a href="mailto:stephaniiabubnova@gmail.com" style="display: block; text-align: center; text-decoration: none; background: var(--accent); color: #fff; margin-top: 1.5rem; padding: 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; transition: transform 0.2s, opacity 0.2s;">⚡ Open for Web3 & Async Tasks</a>
+
+
+    </div>
+
+    <div class="workspace">
+        <div class="card-container" id="cardCanvas">
+            <!-- Hardware WebGL Engine Layer Node Injection -->
+            <canvas id="webglCanvas"></canvas>
+
+            <div class="layer" id="titleLayer" style="top: 12%; left: 8%; width: 84%; height: auto;">
+                <div class="layer-title" id="renderTitle">Grateful Hearts</div>
+                <div class="resizer"></div>
+            </div>
+            <div class="layer" id="textLayer" style="top: 68%; left: 8%; width: 84%; height: auto;">
+                <div class="layer-text" id="renderText">Gather around with gratitude. Happy Thanksgiving!</div>
+                <div class="resizer"></div>
+            </div>
+			
+			<div style="position: absolute; bottom: 20px; right: 25px; font-size: 0.65rem; font-family: monospace; color: rgba(255,255,255,0.35); z-index: 5; letter-spacing: 0.05em;">Stephaniia Bubnova, 2026</div>
+        </div>
+    </div>
+    <script>
+    const GOOGLE_FONTS_BASE = 'https://' + '://googleapis.com' + '/css2?family=';
+    const W3_NAMESPACE = 'http://' + 'www.w3.org' + '/2000/svg';
+
+    const PRESETS = {
+        'thanksgiving': { title: 'Grateful Hearts', text: 'Gather around with gratitude. Happy Thanksgiving!', seed: [-0.4, 0.6], color: [0.9, 0.45, 0.1] },
+        'easter': { title: 'Spring Renewal', text: 'Wishing you a season of hope, joy, and new life.', seed: [0.285, 0.01], color: [0.3, 0.8, 0.5] },
+        'new year': { title: 'Fresh Horizons', text: 'Step into a new year full of bright possibilities.', seed: [-0.70176, -0.3842], color: [0.4, 0.3, 0.9] }
+    };
+
+    const GOOGLE_FONTS = [
+        { name: 'Standard Serif', query: 'Times New Roman, serif' },
+        { name: 'Classic Book', query: 'Georgia, serif' },
+        { name: 'Modern Sans', query: 'Arial, sans-serif' },
+        { name: 'Elegant Clean', query: 'Verdana, sans-serif' },
+        { name: 'Cyber Monospace', query: 'Courier New, monospace' },
+        { name: 'Impact Heavy', query: 'Impact, Arial Black, sans-serif' }
+    ];
+	
+    const PALETTES = [
+        { name: 'Pure White', title: '#FFFFFF', text: 'rgba(255,255,255,0.85)' },
+        { name: 'Liquid Gold', title: '#F2C94C', text: '#FFF3CD' },
+        { name: 'Neon Cyber', title: '#00F2FE', text: '#D1F7FF' },
+        { name: 'Sunset Peach', title: '#FF8A00', text: '#FFEBD6' },
+        { name: 'Minimal Muted', title: '#E0E0E0', text: '#A9A9A9' }
+    ];
+
+    const canvas = document.getElementById('cardCanvas');
+    const glCanvas = document.getElementById('webglCanvas');
+    const eventSelect = document.getElementById('eventSelect');
+    const customSearch = document.getElementById('customSearch');
+    const bgGallery = document.getElementById('bgGallery');
+    const inputTitle = document.getElementById('inputTitle');
+    const inputText = document.getElementById('inputText');
+    const fontSelect = document.getElementById('fontSelect');
+    const paletteGrid = document.getElementById('paletteGrid');
+    const aspectCheck = document.getElementById('aspectRatio');
+    const motionCheck = document.getElementById('animateEffects');
+    const exportBtn = document.getElementById('exportBtn');
+    const exportMotionBtn = document.getElementById('exportMotionBtn');
+    const fractalRange = document.getElementById('fractalRange');
+
+    let activeDrag = null, activeResize = null;
+    let startX, startY, startW, startH;
+    let activeColor = PALETTES;
+    
+    let gl = null;
+    let shaderProgram = null;
+    let animationFrameId = null;
+    let startTime = Date.now();
+    let currentSeed = [-0.4, 0.6];
+    let currentColorBoost = [0.9, 0.45, 0.1];
+
+    const VERTEX_SHADER_SOURCE = `
+        attribute vec2 position;
+        void main() {
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    `;
+
+    const FRAGMENT_SHADER_SOURCE = `
+        precision highp float;
+        uniform vec2 u_resolution;
+        uniform vec2 u_seed;
+        uniform vec3 u_color_boost;
+        uniform float u_time;
+        uniform float u_distortion;
+
+        void main() {
+            vec2 st = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
+            st *= 2.5;
+
+            vec2 c = u_seed + vec2(sin(u_time * 0.2) * 0.02 * u_distortion, cos(u_time * 0.15) * 0.02 * u_distortion);
+            vec2 z = st;
+            
+            float iterations = 0.0;
+            const float max_iterations = 64.0;
+
+            for (float i = 0.0; i < max_iterations; i++) {
+                if (dot(z, z) > 4.0) break;
+                float x = z.x * z.x - z.y * z.y + c.x;
+                z.y = 2.0 * z.x * z.y + c.y;
+                z.x = x;
+                iterations += 1.0;
+            }
+
+            if (iterations < max_iterations) {
+                float log_zn = log(dot(z, z)) / 2.0;
+                float nu = log(log_zn / log(2.0)) / log(2.0);
+                float cycle = (iterations + 1.0 - nu) / max_iterations;
+                
+                vec3 baseSkyColor = vec3(0.02, 0.01, 0.04);
+                vec3 neonCoreGlow = u_color_boost * sin(cycle * 6.28 + vec3(0.0, 1.0, 2.0));
+                
+                gl_FragColor = vec4(mix(baseSkyColor, neonCoreGlow, cycle * 2.0), 1.0);
+            } else {
+                gl_FragColor = vec4(0.01, 0.01, 0.02, 1.0);
+            }
+        }
+    `;
+
+    function initWebGL() {
+        gl = glCanvas.getContext('webgl', { preserveDrawingBuffer: true });
+        if (!gl) return console.error('WebGL failed');
+
+        const vs = compileShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE);
+        const fs = compileShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
+        if (!vs || !fs) return;
+        
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vs);
+        gl.attachShader(shaderProgram, fs);
+        gl.linkProgram(shaderProgram);
+
+        // Fixed strict Enum parameter check mapping validation rules
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            console.error(gl.getProgramInfoLog(shaderProgram));
+            return;
+        }
+
+        const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+        const posAttr = gl.getAttribLocation(shaderProgram, 'position');
+        gl.enableVertexAttribArray(posAttr);
+        gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+
+        gl.useProgram(shaderProgram);
+        resizeWebGLSurface();
+    }
+
+    function compileShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error(gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+
+    function resizeWebGLSurface() {
+        if (!gl || !shaderProgram) return;
+        glCanvas.width = 500; glCanvas.height = 650;
+        gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+        
+        gl.useProgram(shaderProgram);
+        const resLoc = gl.getUniformLocation(shaderProgram, 'u_resolution');
+        if (resLoc) gl.uniform2f(resLoc, glCanvas.width, glCanvas.height);
+    }
+    </script>
+
+     <script>
+    // Global hardware lifecycle clock runtime controller loop
+    function renderWebGLCycle() {
+        if (!gl || !shaderProgram) return;
+
+        gl.useProgram(shaderProgram);
+
+        const seedLoc = gl.getUniformLocation(shaderProgram, 'u_seed');
+        const colorLoc = gl.getUniformLocation(shaderProgram, 'u_color_boost');
+        const timeLoc = gl.getUniformLocation(shaderProgram, 'u_time');
+        const distLoc = gl.getUniformLocation(shaderProgram, 'u_distortion');
+
+        if (seedLoc) gl.uniform2f(seedLoc, currentSeed[0], currentSeed[1]);
+        if (colorLoc) gl.uniform3f(colorLoc, currentColorBoost[0], currentColorBoost[1], currentColorBoost[2]);
+        if (timeLoc) gl.uniform1f(timeLoc, (Date.now() - startTime) / 1000.0);
+        if (distLoc) gl.uniform1f(distLoc, parseFloat(fractalRange.value) / 50.0);
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        if (motionCheck.checked) {
+            animationFrameId = requestAnimationFrame(renderWebGLCycle);
+        }
+    }
+
+    function setupFonts() {
+        // Strict absolute weight parameters force instant preloading of all typography layers
+        const fontWeights = ':wght@400;700;800;900&display=swap';
+ 
+	    fontSelect.innerHTML = '';
+		
+		GOOGLE_FONTS.forEach(f => {
+            const o = document.createElement('option');
+            o.value = f.query; 
+            o.textContent = f.name;
+            fontSelect.appendChild(o);
+        });
+
+    }
+
+    function setupInterface() {
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = 'custom'; defaultOpt.textContent = 'SELECT OCCASION...';
+        defaultOpt.disabled = true; defaultOpt.selected = true;
+        eventSelect.appendChild(defaultOpt);
+
+        Object.keys(PRESETS).forEach(k => {
+            const o = document.createElement('option');
+            o.value = k; o.textContent = k.toUpperCase();
+            eventSelect.appendChild(o);
+        });
+
+
+
+        PALETTES.forEach((p, idx) => {
+            const dot = document.createElement('div');
+            dot.className = 'color-dot' + (idx === 0 ? ' active' : '');
+            dot.style.background = `linear-gradient(135deg, ${p.title} 50%, ${p.text} 50%)`;
+            dot.addEventListener('click', () => {
+                document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+                dot.classList.add('active'); activeColor = p; applyColorPalette();
+            });
+            paletteGrid.appendChild(dot);
+        });
+
+        inputTitle.value = ''; inputText.value = '';
+    }
+
+    function generateFractalGallery(targetPromptOrKey) {
+        bgGallery.innerHTML = '';
+        let baseSeed = [-0.4, 0.6];
+        let baseColor = [0.9, 0.45, 0.1];
+
+        if (PRESETS[targetPromptOrKey]) {
+            baseSeed = PRESETS[targetPromptOrKey].seed;
+            baseColor = PRESETS[targetPromptOrKey].color;
+        } else if (targetPromptOrKey) {
+            const str = String(targetPromptOrKey);
+            const hash = Math.abs(str.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+            baseSeed = [-0.7 + ((hash % 100) / 1000.0), 0.27 + ((hash % 50) / 1000.0)];
+            const hue = (hash % 360) * (Math.PI / 180.0);
+            baseColor = [Math.abs(Math.sin(hue)), Math.abs(Math.sin(hue + 2.09)), Math.abs(Math.sin(hue + 4.18))];
+        }
+
+        currentSeed = baseSeed; currentColorBoost = baseColor;
+        renderWebGLCycle();
+
+        let i = 0;
+        function renderNextThumb() {
+            if (i >= 6) {
+                currentSeed = baseSeed; currentColorBoost = baseColor;
+                renderWebGLCycle(); return;
+            }
+
+            const offsetSeed = [baseSeed[0] + (i * 0.015), baseSeed[1] - (i * 0.01)];
+            currentSeed = offsetSeed; currentColorBoost = baseColor;
+            
+            gl.useProgram(shaderProgram);
+            gl.uniform2f(gl.getUniformLocation(shaderProgram, 'u_seed'), currentSeed[0], currentSeed[1]);
+            gl.uniform3f(gl.getUniformLocation(shaderProgram, 'u_color_boost'), currentColorBoost[0], currentColorBoost[1], currentColorBoost[2]);
+            gl.uniform1f(gl.getUniformLocation(shaderProgram, 'u_time'), (Date.now() - startTime) / 1000.0);
+            gl.uniform1f(gl.getUniformLocation(shaderProgram, 'u_distortion'), parseFloat(fractalRange.value) / 50.0);
+            gl.clearColor(0.0, 0.0, 0.0, 1.0); gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            setTimeout(() => {
+                const thumbnailDataUrl = glCanvas.toDataURL('image/jpeg', 0.4);
+                const box = document.createElement('div');
+                box.className = 'thumb-box' + (i === 0 ? ' active' : ''); 
+                box.style.border = 'none'; box.style.cursor = 'pointer'; box.style.position = 'relative';
+                
+                const imgLayer = document.createElement('img');
+                imgLayer.src = thumbnailDataUrl;
+                imgLayer.style.width = '100%'; imgLayer.style.height = '100%'; imgLayer.style.objectFit = 'cover';
+                box.appendChild(imgLayer);
+
+                const label = document.createElement('div');
+                label.style.position = 'absolute'; label.style.bottom = '2px'; label.style.right = '4px';
+                label.style.fontSize = '0.5rem'; label.style.fontFamily = 'monospace';
+                label.style.color = '#fff'; label.style.textShadow = '0 1px 4px #000';
+                label.innerText = `V${i + 1}`; box.appendChild(label);
+                
+                const frozenSeed = offsetSeed;
+                box.addEventListener('click', () => {
+                    document.querySelectorAll('.thumb-box').forEach(b => b.classList.remove('active'));
+                    box.classList.add('active');
+                    currentSeed = frozenSeed; renderWebGLCycle();
+                });
+
+                bgGallery.appendChild(box);
+                i++; renderNextThumb();
+            }, 20);
+        }
+        renderNextThumb();
+    }
+    </script>
+    <script>
+    function applyColorPalette() {
+        document.getElementById('renderTitle').style.color = activeColor.title;
+        document.getElementById('renderText').style.color = activeColor.text;
+    }
+
+    function applyLayout() {
+        const h = document.getElementById('renderTitle');
+        const t = document.getElementById('renderText');
+        h.innerText = inputTitle.value || ''; t.innerText = inputText.value || '';
+        scaleText(document.getElementById('titleLayer'));
+        scaleText(document.getElementById('textLayer'));
+    }
+
+    function scaleText(box) {
+        const el = box.firstElementChild;
+        let size = box.id === 'titleLayer' ? 44 : 18; el.style.fontSize = `${size}px`;
+        while ((el.scrollHeight > box.clientHeight || el.scrollWidth > box.clientWidth) && size > 10) {
+            size--; el.style.fontSize = `${size}px`;
+        }
+    }
+	
+    fontSelect.addEventListener('change', (e) => {
+        const font = e.target.value;
+        
+        canvas.style.fontFamily = font;
+        document.getElementById('renderTitle').style.fontFamily = font;
+        document.getElementById('renderText').style.fontFamily = font;
+
+        applyLayout();
+        renderWebGLCycle();
+    });
+
+
+
+
+    function bindEvents() {
+        eventSelect.addEventListener('change', (e) => {
+            const d = PRESETS[e.target.value];
+            inputTitle.value = d.title; inputText.value = d.text;
+            applyLayout(); generateFractalGallery(e.target.value);
+        });
+
+        customSearch.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.value.trim() !== '') {
+                generateFractalGallery(e.target.value.trim());
+            }
+        });
+	
+
+        inputTitle.addEventListener('input', applyLayout);
+        inputText.addEventListener('input', applyLayout);
+        
+	
+        motionCheck.addEventListener('change', (e) => {
+            if (e.target.checked) renderWebGLCycle();
+            else cancelAnimationFrame(animationFrameId);
+        });
+
+        document.querySelectorAll('.layer').forEach(layer => {
+            layer.addEventListener('mousedown', (e) => {
+                if (e.target.classList.contains('resizer')) {
+                    activeResize = layer; startX = e.clientX; startY = e.clientY;
+                    startW = parseInt(window.getComputedStyle(layer).width, 10);
+                    startH = parseInt(window.getComputedStyle(layer).height, 10);
+                    e.preventDefault();
+                } else {
+                    activeDrag = layer; startX = e.clientX - layer.offsetLeft; startY = e.clientY - layer.offsetTop;
+                }
+                document.querySelectorAll('.layer').forEach(l => l.classList.remove('active'));
+                layer.classList.add('active');
+            });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (activeDrag) {
+                let x = e.clientX - startX; let y = e.clientY - startY;
+                x = Math.max(0, Math.min(x, canvas.clientWidth - activeDrag.clientWidth));
+                y = Math.max(0, Math.min(y, canvas.clientHeight - activeDrag.clientHeight));
+                activeDrag.style.left = `${x}px`; activeDrag.style.top = `${y}px`;
+            }
+            if (activeResize) {
+                let w = startW + (e.clientX - startX); let h = startH + (e.clientY - startY);
+                if (aspectCheck.checked) h = w * (startH / startW);
+                w = Math.max(80, Math.min(w, canvas.clientWidth - activeResize.offsetLeft));
+                h = Math.max(40, Math.min(h, canvas.clientHeight - activeResize.offsetTop));
+                activeResize.style.width = `${w}px`; activeResize.style.height = `${h}px`;
+                scaleText(activeResize);
+            }
+        });
+
+        document.addEventListener('mouseup', () => { activeDrag = null; activeResize = null; });
+        exportBtn.addEventListener('click', () => runWebGLPNGRasterizer());
+        exportMotionBtn.addEventListener('click', () => runSVGMotionExport());
+    }
+
+    function getDynamicFileName() {
+        const val = eventSelect.value;
+        const searchVal = customSearch.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '-');
+        if (val && val !== 'custom') return `auracard-${val}`;
+        if (searchVal) return `auracard-${searchVal}`;
+        return 'auracard-quantum';
+    }
+
+    function runWebGLPNGRasterizer() {
+        const cnvs = document.createElement('canvas');
+        cnvs.width = 500; cnvs.height = 650;
+        const ctx = cnvs.getContext('2d');
+        ctx.drawImage(glCanvas, 0, 0, 500, 650);
+        
+        const fontName = fontSelect.value;
+        const tL = document.getElementById('titleLayer'), bL = document.getElementById('textLayer');
+        const tT = document.getElementById('renderTitle'), bT = document.getElementById('renderText');
+        
+        ctx.font = `800 ${window.getComputedStyle(tT).fontSize} "${fontName}", sans-serif`;
+        ctx.fillStyle = activeColor.title; ctx.textBaseline = 'top';
+        ctx.fillText(tT.innerText, tL.offsetLeft + 10, tL.offsetTop + 10);
+        
+        ctx.font = `${window.getComputedStyle(bT).fontSize} "${fontName}", sans-serif`;
+        ctx.fillStyle = activeColor.text;
+        ctx.fillText(bT.innerText, bL.offsetLeft + 10, bL.offsetTop + 10);
+        
+        const a = document.createElement('a');
+        a.href = cnvs.toDataURL('image/png');
+        a.download = `${getDynamicFileName()}-${Date.now()}.png`; a.click();
+    }
+
+    function runSVGMotionExport() {
+        const fontName = fontSelect.value;
+        const tL = document.getElementById('titleLayer'), bL = document.getElementById('textLayer');
+        const tT = document.getElementById('renderTitle'), bT = document.getElementById('renderText');
+        const hardwareBase64String = glCanvas.toDataURL('image/jpeg');
+        const escapedFontUrl = GOOGLE_FONTS_BASE + fontName.replace(/ /g, '+') + encodeURIComponent(':wght@400;700;800;900&display=swap');
+
+        // Pure mathematical CSS hue shifting loop overlay provides endless 60fps dynamic flow inside asset files
+        const svg = `
+            <svg xmlns="${W3_NAMESPACE}" width="500" height="650" viewBox="0 0 500 650">
+                <defs>
+                    <style>
+                        @import url('${escapedFontUrl}');
+                        @keyframes infiniteFlow { 0% { transform: scale(1) rotate(0deg); filter: hue-rotate(0deg) brightness(0.9); } 50% { transform: scale(1.04) rotate(2deg); filter: hue-rotate(15deg) brightness(1.1); } 100% { transform: scale(1) rotate(0deg); filter: hue-rotate(0deg) brightness(0.9); } }
+                        .bg-v { animation: infiniteFlow 10s infinite ease-in-out; transform-origin: center; }
+                        .tt { font-family: "${fontName}", sans-serif; font-size: ${window.getComputedStyle(tT).fontSize}; font-weight: 800; fill: ${activeColor.title}; dominant-baseline: text-before-edge; }
+                        .tb { font-family: "${fontName}", sans-serif; font-size: ${window.getComputedStyle(bT).fontSize}; fill: ${activeColor.text}; dominant-baseline: text-before-edge; }
+                    </style>
+                </defs>
+                <g style="clip-path: inset(0 0 0 0 round 16px);">
+                    <image href="${hardwareBase64String}" width="560" height="720" x="-30" y="-30" preserveAspectRatio="xMidYMid slice" class="bg-v"/>
+                    <g transform="translate(${tL.offsetLeft}, ${tL.offsetTop})"><text class="tt" width="${tL.clientWidth}">${tT.innerText}</text></g>
+                    <g transform="translate(${bL.offsetLeft}, ${bL.offsetTop})"><text class="tb" width="${bL.clientWidth}">${bT.innerText}</text></g>
+                </g>
+            </svg>
+        `;
+
+        const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `${getDynamicFileName()}-animated-${Date.now()}.svg`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        setupFonts(); setupInterface(); bindEvents(); applyLayout(); initWebGL();
+        generateFractalGallery('thanksgiving');
+    });
+    </script>
+	
+	<script>
+		console.log(
+			"%c⚡ Need custom WebGL shaders or frontend builds? %c\nI'm open to async tasks and Web3 dev bounties. Paid in crypto (USDT/USDC/SOL). Contact: [mailto:stephaniiabubnova@gmail.com]", 
+			"color: #5d56ff; font-size: 14px; font-weight: bold;", 
+			"color: #8a8a93; font-size: 12px;"
+		);
+	</script>
+
+</body>
+</html>
