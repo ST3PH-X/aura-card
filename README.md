@@ -2,9 +2,11 @@
 
 <p align="left">
   <a href="https://st3ph-x.github.io/aura-card/" target="_blank">
-    <img src="https://shields.io" alt="Live Demo">
+    <img src="https://shields.io/badge/LIVE_DEMO-LAUNCH_APP-5d56ff?style=for-the-badge&logo=target&logoColor=white" alt="Live Demo">
   </a>
-  <img src="https://shields.io" alt="GitHub license">
+ <a href="https://github.com/ST3PH-X/aura-card/blob/main/LICENSE" target="_blank">
+    <img src="https://shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
+  </a>
 </p>
 
 A zero-dependency, 100% browser-native procedural engine that turns plain text inputs into complex, mathematically precise Julia Set fractals in 60 FPS. 
@@ -61,4 +63,4 @@ Drop me a line: **[stephaniiabubnova@gmail.com]**
 
 ---
 
-*Crafted by Stephaniia Bubnova, 2026.*
+
